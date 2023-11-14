@@ -1,0 +1,371 @@
+<!-- Author: Mateus Scarpelli -->
+<!-- Version: 1.8 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Invaders</title>
+    <!-- This set the background and the game "area" -->
+    <style>
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #000; }
+        canvas { border: 1px solid #fff; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <script>
+        var canvas = document.getElementById('gameCanvas');
+        var ctx = canvas.getContext('2d');
+        // Player properties
+        // This creates the player "spaceship" (the triangle)
+        var player = {
+            x: canvas.width / 2 - 15,
+            y: canvas.height - 60,
+            width: 30,
+            height: 30,
+            speed: 5
+        };
+
+        // Bullet properties
+        var bullets = [];
+        var bulletSpeed = 7;
+        var fireRate = 0.125; // 8 shots per second (1 / 8)
+        var lastFired = Date.now();
+
+        // Enemy properties
+        // This create the enemies (the red squares) and setup the display
+        var enemyRows = 4;
+        var enemyColumns = 16; // Maximum number of enemies per line
+        var enemyWidth = 30;
+        var enemyHeight = 20;
+        var enemyPadding = 10;
+        var enemyOffsetTop = 30;
+        var enemyOffsetLeft = 30;
+        var enemies = [];
+
+        // Game properties
+        // This also set the wave system and difficulty of the game
+        var gameOver = false;
+        var score = 0;
+        var wave = 0; // Current wave
+        var initialEnemyCount = 2; // Starting count of enemies in the first wave (This wave will not be displayed, the actual first wave to be displayed will have 4 enemies)
+        var maxEnemyCount = 40; // Maximum number of enemies
+        var enemyCount = initialEnemyCount; // Current number of enemies, starting with initial count
+        var enemyIncreaseStep = 10; // Number of enemies to add after maxEnemyCount
+        var currentEnemyCount = 0; // Number of enemies on the first wave
+        var waveClear = true;
+        var betweenWavesCountdown = 8; // 8 seconds countdown between waves
+        var timeLastWaveCleared = Date.now(); // Time when the last wave was cleared (used for the countdown)
+        var enemyDownSpeed = 0.5; // Adjust as needed for difficulty 
+
+        // Restart button properties
+        var restartButton = {
+            x: canvas.width / 2 - 50,
+            y: canvas.height / 2 + 100,
+            width: 100,
+            height: 40,
+            text: 'Restart', // Text to display on the button
+        };
+        // Function to update enemy count for each wave
+        function updateEnemyCount() {
+            if (wave < 5) {
+                enemyCount = initialEnemyCount * Math.pow(2, wave); // Double the enemy count each wave until the 5th wave
+            } else if (wave == 5) {
+                enemyCount = maxEnemyCount; // Set to maximum number of enemies
+            } else {
+                enemyCount += enemyIncreaseStep; // Add additional enemies for each wave beyond the 5th
+            }
+        }
+
+        // Function to spawn enemies gradually
+        function spawnEnemiesGradually() {
+            for (var i = 0; i < enemyRows; i++) {
+                setTimeout((function(row) {
+                    return function() {
+                        // This ensures that the correct row is used in the timeout
+                        for (var j = 0; j < enemyColumns; j++) {
+                            if (j < enemyCount / enemyRows) {
+                                enemies[row][j] = { x: j * (enemyWidth + enemyPadding) + enemyOffsetLeft, y: row * (enemyHeight + enemyPadding) + enemyOffsetTop, status: 1 };
+                            }
+                        }
+                    };
+                })(i), i * 500); // Delay each row by 500 milliseconds (Do not change this value, it will crash the game)
+            }
+        }
+
+        function spawnNewWave() {
+            wave++;
+            updateEnemyCount(); // Update the enemy count based on the wave number
+            enemyRows = Math.min(Math.ceil(enemyCount / enemyColumns), 10); // Limit the number of rows to 10 (already impossible without adding any boosts)
+            enemies = [];
+
+            for (var i = 0; i < enemyRows; i++) {
+                enemies[i] = [];
+                for (var j = 0; j < enemyColumns; j++) {
+                    enemies[i][j] = { status: 0 }; // Initialize all enemies as inactive
+                }
+            }
+
+            spawnEnemiesGradually(); // Spawn enemies gradually
+            waveClear = false;
+            currentEnemyCount = enemyCount;
+        }
+
+        // Handle keyboard controls
+        var keysDown = {};
+
+        addEventListener("keydown", function (e) {
+            keysDown[e.key] = true;
+        }, false);
+
+        addEventListener("keyup", function (e) {
+            delete keysDown[e.key];
+        }, false);
+
+        // Fire a bullet
+        function shoot() {
+            if (Date.now() - lastFired > fireRate * 1000) {
+                bullets.push({
+                    x: player.x + player.width / 2 - 2.5,
+                    y: player.y,
+                    width: 5,
+                    height: 10,
+                    color: 'yellow'
+                });
+                lastFired = Date.now(); // Update the last fired time
+            }
+        }
+        // Auto-fire bullets
+        function autoShoot() {
+            if (Date.now() - lastFired > 1000 / 8) { // 8 shots per second
+                shoot();
+            }
+        }
+
+        // Start auto-shooting when the game is not over
+        var autoShootInterval = setInterval(function() {
+            if (!gameOver) {
+                autoShoot();
+            }
+        }, 1000 / 8); // 8 shots per second interval
+
+        // Collision detection between bullets and enemies
+        function collisionDetection() {
+            for (var i = bullets.length - 1; i >= 0; i--) {
+                var bullet = bullets[i];
+                for (var j = 0; j < enemyRows; j++) {
+                    for (var k = enemies[j].length - 1; k >= 0; k--) {
+                        var enemy = enemies[j][k];
+                        if (enemy.status == 1) {
+                            if (bullet.x > enemy.x && bullet.x < enemy.x + enemyWidth && bullet.y > enemy.y && bullet.y < enemy.y + enemyHeight) {
+                                enemy.status = 0;
+                                bullets.splice(i, 1);
+                                score += 10;
+                                currentEnemyCount--;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update game objects
+        var update = function () {
+            if (!gameOver) {
+                if (keysDown['ArrowLeft'] || keysDown['a']) {
+                    player.x -= player.speed;
+                    if (player.x < 0) {
+                        player.x = 0;
+                    }
+                }
+                if (keysDown['ArrowRight'] || keysDown['d']) {
+                    player.x += player.speed;
+                    if (player.x + player.width > canvas.width) {
+                        player.x = canvas.width - player.width;
+                    }
+                }
+
+                // Update bullet positions
+                bullets.forEach(function (bullet, i) {
+                    bullet.y -= bulletSpeed;
+                    if (bullet.y < 0) {
+                        bullets.splice(i, 1);
+                    }
+                });
+
+                collisionDetection();
+
+                // Update enemy positions and check for game over
+                for (var i = 0; i < enemyRows; i++) {
+                    for (var j = 0; j < enemies[i].length; j++) {
+                        var enemy = enemies[i][j];
+                        if (enemy.status == 1) {
+                            enemy.y += enemyDownSpeed;
+                            if (enemy.y >= canvas.height - player.height || (enemy.y >= player.y && enemy.x >= player.x && enemy.x <= player.x + player.width)) {
+                                gameOver = true;
+                            }
+                        }
+                    }
+                }
+
+                if (currentEnemyCount <= 0) {
+                    waveClear = true;
+                    if (Date.now() - timeLastWaveCleared >= betweenWavesCountdown * 1000) {
+                        spawnNewWave();
+                    }
+                }
+            }
+        };
+        // Draw everything on the canvas
+        var render = function () {
+            if (!gameOver) {
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Draw player
+                ctx.fillStyle = 'green';
+                ctx.beginPath();
+                ctx.moveTo(player.x + player.width / 2, player.y);
+                ctx.lineTo(player.x, player.y + player.height);
+                ctx.lineTo(player.x + player.width, player.y + player.height);
+                ctx.closePath();
+                ctx.fill();
+
+                // Draw bullets
+                bullets.forEach(function (bullet) {
+                    ctx.fillStyle = bullet.color;
+                    ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+                });
+
+                // Draw enemies
+                for (var i = 0; i < enemyRows; i++) {
+                    for (var j = 0; j < enemies[i].length; j++) {
+                        var enemy = enemies[i][j];
+                        if (enemy.status == 1) {
+                            ctx.fillStyle = 'red';
+                            ctx.fillRect(enemy.x, enemy.y, enemyWidth, enemyHeight);
+                        }
+                    }
+                }
+
+                // Draw score
+                ctx.fillStyle = 'white';
+                ctx.font = '16px Arial';
+                ctx.fillText('Score: ' + score, 8, 20);
+
+                // Draw enemy count
+                ctx.fillText('Enemies: ' + currentEnemyCount, canvas.width - 100, 20);
+            } else {
+                // Draw game over screen
+                ctx.fillStyle = 'white';
+                ctx.font = '48px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2);
+                ctx.font = '24px Arial';
+                ctx.fillText('Score: ' + score, canvas.width / 2, canvas.height / 2 + 50);
+
+                // Draw restart button
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(restartButton.x, restartButton.y, restartButton.width, restartButton.height);
+                ctx.fillStyle = '#000000';
+                ctx.font = '20px Arial';
+                ctx.fillText(restartButton.text, restartButton.x + 20, restartButton.y + 25);
+                ctx.textAlign = 'center';
+
+            }
+        };
+
+        // The main game loop
+        var main = function () {
+            update();
+            render();
+            if (!gameOver) {
+                requestAnimationFrame(main);
+            }
+        };
+
+        // Cross-browser support for requestAnimationFrame
+        var w = window;
+        requestAnimationFrame = w.requestAnimationFrame || w.webkitRequestAnimationFrame || w.msRequestAnimationFrame || w.mozRequestAnimationFrame;
+
+        // Reset game to start state
+        function resetGame() {
+            gameOver = false;
+            score = 0;
+            wave = 0; // Reset wave number
+            bullets = [];
+            lastFired = Date.now();
+            spawnNewWave();
+            main();
+        }
+
+        // Add event listener for restart button click
+        canvas.addEventListener('click', function(event) {
+            if (gameOver) {
+                var x = event.pageX - canvas.offsetLeft,
+                    y = event.pageY - canvas.offsetTop;
+
+                // Check if the click was inside the button
+                if (x >= restartButton.x && x <= restartButton.x + restartButton.width &&
+                    y >= restartButton.y && y <= restartButton.y + restartButton.height) {
+                    resetGame();
+                }
+            }
+        }, false);
+
+        // Start the game loop
+        resetGame();
+    </script>
+</body>
+</html>
+
+<!-- Known issues:
+- Game is impossible to win without adding any boosts
+- No sound effects
+- Graphics are not very good, actually they are pretty bad
+- The game is not responsive, it will not work on mobile devices
+- Restart button text is not centered (I tried to center it but it didn't work, don't know why)
+- The game will crash if you change the spawn delay (500 milliseconds) in the spawnEnemiesGradually() function
+- Some unused variables and functions from the original code are still there
+- The player movement is not very smooth, it could be improved to improve the accuracy of the shots
+- Poor background
+- The game is not very fun, it could be improved by adding more features, like, bosses and power-ups
+- The game is very challenging, it could be improved by adding difficulty levels 
+- The game is not well balanced, it could be improved by adjusting the enemyDownSpeed variable and other variables related to the wave system
+- There is no way to pause the game
+- There is no way to quit the game
+- There are no menus
+- There is no way to change the controls
+- There is no way to change the fire rate (just on the code)
+- There is no way to change the bullet speed (just on the code)
+- There is no enemy variety, all enemies are the same
+- The wave count is not displayed
+- The wave countdown is not displayed and work just on the first wave
+-->
+
+<!-- References: 
+Space Invaders game from Atari (1978) by Tomohiro Nishikado
+-->
+
+<!-- Working features
+- Player movement
+- Auto-fire
+- Enemy movement
+- Enemy spawn
+- Collision detection
+- Enemy count
+- Enemy waves
+- Score
+- Game over
+- Restart button
+- Game loop
+- Cross-browser support for requestAnimationFrame
+- Responsive canvas
+- Wave count 
+- Bullet speed
+- Fire rate
+- Enemy down speed
+-->
