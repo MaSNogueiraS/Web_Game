@@ -47,3 +47,23 @@ Space Invaders game from Atari (1978) by Tomohiro Nishikado
 - Bullet speed
 - Fire rate
 - Enemy down speed
+
+
+## On progress for the next updates
+
+- Game Menu with start and options button
+  - Change the keys of movment and dificult of the game
+  - Sound FX (disable for now but the options will be created)
+  - Grapichs (Same as Sound FX)
+- Some in game improvments:
+  - Add of bosses after a number of waves
+  - Add some new enemy formations
+  - Add some new enemies types
+  - Add power ups
+
+
+ ## Intalation and use 
+
+ If you want you can just download the zip file of the main branch (important to use the main as it is the version that was tested and gave any issues) then extract the folder in the location you prefer and run the home_jogo file.
+
+ --!Note!-- This is just a project and not a product and is not finalized yet.
